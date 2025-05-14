@@ -43,3 +43,12 @@ span[style] {
   margin-top: 1rem;
   display: block;
 }
+
+.box{
+  margin-top: 100px;
+  display: flex;
+  flex-direction: row;
+  gap: 0.3rem;
+  align-items: center;
+  justify-content: center;
+}

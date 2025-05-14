@@ -40,6 +40,7 @@ function Topic() {
   return (
     <div className="App">
       <form onSubmit={handleSubmit}>
+        <div className='box'>
         <input
           type="text"
           value={user}
@@ -64,6 +65,7 @@ function Topic() {
         <button type="submit" disabled={loading}>
           {loading ? 'Sending...' : 'Submit'}
         </button>
+        </div>
       </form>
       {error && (
         <span style={{ color: 'red' }}>{error}</span>

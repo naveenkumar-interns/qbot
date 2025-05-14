@@ -8,7 +8,7 @@ function App() {
   return (
     <BrowserRouter>
       <div className="App">
-        <h1>Test Agents</h1>
+        <h1>AI Agents Assisted Quiz Application</h1>
         <Routes>
           <Route path="/" element={<Topic />} />
           <Route path="/questions" element={<Questions />} />
