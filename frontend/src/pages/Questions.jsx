@@ -83,6 +83,7 @@ function Questions() {
     setResultLoading(true)
     setEvaluationEnabled(false)
     try {
+      setUser(Cookies.get('username'))
       const response = await fetch(`http://localhost:8000/api/evaluate_answers/?user=${user}`)
       const data = await response.json()
       if (response.ok) {

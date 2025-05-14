@@ -1,5 +1,64 @@
-.h1{
-    margin-top: 2rem;
-    margin-bottom: 2rem;
-    color: #2563eb;
+.evaluation-container {
+  max-width: 800px;
+  margin: 2rem auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  padding: 2rem 2.5rem;
+}
+
+.evaluation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.evaluation-card {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+
+.evaluation-question {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.evaluation-answer,
+.evaluation-user-answer,
+.evaluation-score,
+.evaluation-reason,
+.evaluation-suggestion {
+  margin-bottom: 0.4rem;
+}
+
+.label {
+  color: #2563eb;
+  font-weight: 500;
+  margin-right: 0.5rem;
+}
+
+.evaluation-loading,
+.evaluation-error {
+  text-align: center;
+  margin-top: 2rem;
+  font-size: 1.1rem;
+  color: #dc2626;
+}
+
+.back-btn {
+  margin-top: 2rem;
+  padding: 0.7rem 1.5rem;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.back-btn:hover {
+  background: #1d4ed8;
 }

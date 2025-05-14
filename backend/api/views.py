@@ -4,6 +4,8 @@ from rest_framework import status
 from django.http import JsonResponse
 
 import os
+import json
+import ast
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from pymongo import MongoClient
@@ -152,11 +154,75 @@ def submit_answers(request):
         return JsonResponse({"error": "Failed to submit answers"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
+# @api_view(['GET'])
+# def evaluate_answers(request):
+#     user = request.GET.get('user')
+#     if not user:
+#         return JsonResponse({"error": "User is required"}, status=status.HTTP_400_BAD_REQUEST)
+#     try:
+#         # Fetch the test data
+#         user_data = questions_collection.find_one({"user": user})
+#         if not user_data or "test" not in user_data:
+#             return JsonResponse({"error": "No test data found for this user"}, status=status.HTTP_400_BAD_REQUEST)
+#         test = user_data["test"]
+
+#         # Use AI to evaluate each answer
+#         results = []
+#         for q in test:
+#             prompt = f"""
+# You are an examiner. Compare the following correct answer and user answer for the question below. 
+# Give a score of 1 if the user's answer is correct or mostly correct, otherwise 0. 
+# Return only the score (0 or 1) avoid preamble and do not include any other text.
+
+# Question: {q['question']}
+# Correct Answer: {q['answer']}
+# User Answer: {q['user_answer']}
+# """
+#             ai_score = llm.invoke(prompt).content.strip()
+#             try:
+#                 ai_score = int(ai_score)
+#             except Exception:
+#                 ai_score = 0
+#             results.append(ai_score)
+
+#         total_count = len(test)
+#         correct_count = sum(results)
+#         score = (correct_count / total_count) * 100 if total_count > 0 else 0
+
+#         print(f"Score: {score}, Correct Count: {correct_count}, Total Count: {total_count}")
+
+#         return JsonResponse({"score": score, "details": results}, status=status.HTTP_200_OK)
+#     except Exception as e:
+#         return JsonResponse({"error": "Failed to evaluate answers"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+import re
+import json
+
+def extract_json(text):
+    try:
+        # Remove ```json and ``` markers if present
+        text = text.strip()
+        text = re.sub(r'^```json\s*', '', text, flags=re.MULTILINE)
+        text = re.sub(r'\s*```$', '', text, flags=re.MULTILINE)        
+        # Try to parse the cleaned text as JSON
+        print(f"Extracting JSON from text: {json.loads(text)}")
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        # Log the problematic text for debugging
+        print(f"JSON parsing error: {str(e)}")
+        print(f"Raw text: {text}")
+        raise ValueError(f"Failed to parse JSON: {str(e)}")
+    except Exception as e:
+        print(f"Unexpected error in extract_json: {str(e)}")
+        print(f"Raw text: {text}")
+        raise ValueError(f"Unexpected error: {str(e)}")
+
 @api_view(['GET'])
 def evaluate_answers(request):
     user = request.GET.get('user')
     if not user:
         return JsonResponse({"error": "User is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
     try:
         # Fetch the test data
         user_data = questions_collection.find_one({"user": user})
@@ -164,32 +230,89 @@ def evaluate_answers(request):
             return JsonResponse({"error": "No test data found for this user"}, status=status.HTTP_400_BAD_REQUEST)
         test = user_data["test"]
 
-        # Use AI to evaluate each answer
+        # Use AI to evaluate each answer and provide feedback
         results = []
+        updated_test = []
         for q in test:
             prompt = f"""
-You are an examiner. Compare the following correct answer and user answer for the question below. 
-Give a score of 1 if the user's answer is correct or mostly correct, otherwise 0. 
-Return only the score (0 or 1) avoid preamble and do not include any other text.
+            You are an examiner. Compare the following correct answer and user answer for the question below.
+            - Give a score of 1 if the user's answer is correct or mostly correct, otherwise 0.
+            - Briefly explain why you gave this score.
+            - Suggest how the user could improve their answer if it was not perfect.
 
-Question: {q['question']}
-Correct Answer: {q['answer']}
-User Answer: {q['user_answer']}
-"""
-            ai_score = llm.invoke(prompt).content.strip()
+            Return your response as a JSON object with keys: score, reason, suggestion.
+            Example:
+            {{"score": 1, "reason": "The answer is correct.", "suggestion": ""}}
+            or
+            {{"score": 0, "reason": "The answer misses key points.", "suggestion": "Include more details about ..."}}
+
+            Question: {q['question']}
+            Correct Answer: {q['answer']}
+            User Answer: {q['user_answer']}
+            """
             try:
-                ai_score = int(ai_score)
-            except Exception:
-                ai_score = 0
-            results.append(ai_score)
+                ai_response = llm.invoke(prompt).content.strip()
+                print(f"AI Response for question : {ai_response}")
+                feedback = extract_json(ai_response)
+                
+                # Validate feedback structure
+                if not isinstance(feedback, dict) or "score" not in feedback or "reason" not in feedback or "suggestion" not in feedback:
+                    raise ValueError("AI response JSON missing required keys: score, reason, suggestion")
+                
+                score = int(feedback.get("score", 0))
+                reason = feedback.get("reason", "No reason provided.")
+                suggestion = feedback.get("suggestion", "No suggestion provided.")
+
+            except Exception as e:
+                print(f"Error processing AI response: {str(e)}")
+                score = 0
+                reason = f"Failed to process AI response: {str(e)}"
+                suggestion = "Please try again or contact support."
+                feedback = {"score": score, "reason": reason, "suggestion": suggestion}
+
+            results.append(score)
+            # Update each test item with feedback
+            updated_q = dict(q)
+            updated_q.update({
+                "score": score,
+                "reason": reason,
+                "suggestion": suggestion
+            })
+            updated_test.append(updated_q)
 
         total_count = len(test)
         correct_count = sum(results)
-        score = (correct_count / total_count) * 100 if total_count > 0 else 0
+        overall_score = (correct_count / total_count) * 100 if total_count > 0 else 0
 
-        print(f"Score: {score}, Correct Count: {correct_count}, Total Count: {total_count}")
+        # Store the updated test with feedback in the DB
+        questions_collection.update_one(
+            {"user": user},
+            {"$set": {"test": updated_test}},
+            upsert=True
+        )
 
-        return JsonResponse({"score": score, "details": results}, status=status.HTTP_200_OK)
+        return JsonResponse({
+            "score": overall_score,
+            "details": updated_test
+        }, status=status.HTTP_200_OK)
     except Exception as e:
-        return JsonResponse({"error": "Failed to evaluate answers"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        print(f"Unexpected error in evaluate_answers: {str(e)}")
+        return JsonResponse({"error": f"Failed to evaluate answers: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+@api_view(['POST'])
+def get_evaluations(request):
+    user = request.data.get('user')
+    if not user:
+        return JsonResponse({"error": "User is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Fetch the test data
+        user_data = questions_collection.find_one({"user": user})
+        if not user_data or "test" not in user_data:
+            return JsonResponse({"error": "No test data found for this user"}, status=status.HTTP_400_BAD_REQUEST)
+        test = user_data["test"]
+
+        return JsonResponse({"test": test}, status=status.HTTP_200_OK)
+    except Exception as e:
+        print(f"Unexpected error in get_evaluations: {str(e)}")
+        return JsonResponse({"error": f"Failed to get evaluations: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
