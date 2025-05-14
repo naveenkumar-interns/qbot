@@ -61,10 +61,6 @@ def store_questions(questions,user):
 
 
 
-
-
-
-
 @api_view(['POST'])
 def Generate_questions(request):
     topic = request.data.get('topic')
@@ -154,3 +150,46 @@ def submit_answers(request):
         return JsonResponse({"message": "Answers submitted successfully"}, status=status.HTTP_200_OK)
     except Exception as e:
         return JsonResponse({"error": "Failed to submit answers"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+
+@api_view(['GET'])
+def evaluate_answers(request):
+    user = request.GET.get('user')
+    if not user:
+        return JsonResponse({"error": "User is required"}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        # Fetch the test data
+        user_data = questions_collection.find_one({"user": user})
+        if not user_data or "test" not in user_data:
+            return JsonResponse({"error": "No test data found for this user"}, status=status.HTTP_400_BAD_REQUEST)
+        test = user_data["test"]
+
+        # Use AI to evaluate each answer
+        results = []
+        for q in test:
+            prompt = f"""
+You are an examiner. Compare the following correct answer and user answer for the question below. 
+Give a score of 1 if the user's answer is correct or mostly correct, otherwise 0. 
+Return only the score (0 or 1) avoid preamble and do not include any other text.
+
+Question: {q['question']}
+Correct Answer: {q['answer']}
+User Answer: {q['user_answer']}
+"""
+            ai_score = llm.invoke(prompt).content.strip()
+            try:
+                ai_score = int(ai_score)
+            except Exception:
+                ai_score = 0
+            results.append(ai_score)
+
+        total_count = len(test)
+        correct_count = sum(results)
+        score = (correct_count / total_count) * 100 if total_count > 0 else 0
+
+        print(f"Score: {score}, Correct Count: {correct_count}, Total Count: {total_count}")
+
+        return JsonResponse({"score": score, "details": results}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return JsonResponse({"error": "Failed to evaluate answers"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
