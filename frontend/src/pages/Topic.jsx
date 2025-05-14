@@ -1,27 +1,33 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import './Topic.css'
 
 function Topic() {
   const [topic, setTopic] = useState('')
   const [loading, setLoading] = useState(false)
-  const [response, setResponse] = useState(null)
+  const [error, setError] = useState(null)
+  const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
-    setResponse(null)
+    setError(null)
     try {
-      const res = await fetch('http://localhost:5000/api/topic', { // Change URL as needed
+      const res = await fetch('http://localhost:8000/api/generate_questions/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ topic }),
       })
-      const data = await res.json()
-      setResponse(data)
+      if (res.ok) {
+        // Navigate to the next page (change '/questions' to your route)
+        navigate('/questions')
+      } else {
+        setError('Failed to generate questions')
+      }
     } catch (err) {
-      setResponse({ error: 'Failed to send topic' })
+      setError('Failed to send topic')
     }
     setLoading(false)
   }
@@ -40,14 +46,8 @@ function Topic() {
           {loading ? 'Sending...' : 'Submit'}
         </button>
       </form>
-      {response && (
-        <div>
-          {response.error ? (
-            <span style={{ color: 'red' }}>{response.error}</span>
-          ) : (
-            <pre>{JSON.stringify(response, null, 2)}</pre>
-          )}
-        </div>
+      {error && (
+        <span style={{ color: 'red' }}>{error}</span>
       )}
     </div>
   )
