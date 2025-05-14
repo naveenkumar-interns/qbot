@@ -9,7 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pymongo import MongoClient
 
 # MongoDB connection
-client = MongoClient("mongodb://localhost:27017/")
+client = MongoClient("mongodb+srv://rohit:Rohit2004@cluster45.61avwkq.mongodb.net/")
 db = client["test_agent"]
 questions_collection = db["questions"]
 
@@ -107,8 +107,50 @@ def Generate_questions(request):
 
 
 
+@api_view(['GET'])
+def get_questions(request):
+    user = request.GET.get('user')
+    if not user:
+        return JsonResponse({"error": "User is required"}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        user_data = questions_collection.find_one({"user": user})
+        if not user_data or "questions" not in user_data:
+            return JsonResponse({"questions": []}, status=status.HTTP_200_OK)
+        return JsonResponse({"questions": user_data["questions"]}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return JsonResponse({"error": "Failed to fetch questions"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
 
 
 
+@api_view(['POST'])
+def submit_answers(request):
+    user = request.data.get('user')
+    user_answers = request.data.get('answers')
+    if not user or not user_answers:
+        return JsonResponse({"error": "User and answers are required"}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        # Fetch the original questions and answers
+        user_data = questions_collection.find_one({"user": user})
+        if not user_data or "questions" not in user_data:
+            return JsonResponse({"error": "No questions found for this user"}, status=status.HTTP_400_BAD_REQUEST)
+        questions = user_data["questions"]
 
+        # Merge questions, correct answers, and user answers
+        test = []
+        for idx, q in enumerate(questions):
+            test.append({
+                "question": q.get("question"),
+                "answer": q.get("answer"),
+                "user_answer": user_answers[idx]["answer"] if idx < len(user_answers) else ""
+            })
 
+        # Store in the new format
+        questions_collection.update_one(
+            {"user": user},
+            {"$set": {"test": test}},
+            upsert=True
+        )
+        return JsonResponse({"message": "Answers submitted successfully"}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return JsonResponse({"error": "Failed to submit answers"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
