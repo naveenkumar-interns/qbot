@@ -57,7 +57,7 @@
   border-radius: 5px;
   font-size: 1rem;
   cursor: pointer;
-  transition: background 0.2s;
+  transition:  0.2s;
 }
 .back-btn:hover {
   background: #1d4ed8;

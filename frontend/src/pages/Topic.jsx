@@ -6,6 +6,7 @@ import './Topic.css'
 function Topic() {
   const [topic, setTopic] = useState('')
   const [user, setUser] = useState('')
+  const [mail, setMail] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const navigate = useNavigate()
@@ -23,7 +24,7 @@ function Topic() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ topic, user }),
+        body: JSON.stringify({ topic, user, mail }),
       })
       if (res.ok) {
         navigate('/questions')
@@ -44,6 +45,13 @@ function Topic() {
           value={user}
           onChange={(e) => setUser(e.target.value)}
           placeholder="Enter your username"
+          required
+        />
+        <input
+          type="text"
+          value={mail}
+          onChange={(e) => setMail(e.target.value)}
+          placeholder="Enter your Mail ID"
           required
         />
         <input

@@ -134,3 +134,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOW_CREDENTIALS = True
+
+
+# Email configuration for send_mail (using Gmail SMTP)
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_HOST_USER = 'naveenkumar.intern@gmail.com'  # Replace with your Gmail address
+EMAIL_HOST_PASSWORD = 'pqbu awcy omqe rrur'  # Replace with Gmail App Password
+EMAIL_USE_TLS = True
+EMAIL_SENDER = 'naveenkumar.intern@gmail.com'  # Same as EMAIL_HOST_USER

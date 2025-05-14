@@ -77,18 +77,27 @@ function Questions() {
   }
 
   const handleViewResult = async () => {
+    if (resultLoading) return
     setResultError(null)
     setScore(null)
     setShowResult(true)
     setResultLoading(true)
     setEvaluationEnabled(false)
     try {
-      setUser(Cookies.get('username'))
       const response = await fetch(`http://localhost:8000/api/evaluate_answers/?user=${user}`)
       const data = await response.json()
       if (response.ok) {
         setScore(data.score)
-        setEvaluationEnabled(true)
+        // Send email only if evaluation succeeded
+        const next_response = await fetch(`http://localhost:8000/api/sendmail/?user=${user}`)
+        const mailData = await next_response.json()
+        if (next_response.ok) {
+          setEvaluationEnabled(true)
+          console.log('Email sent successfully')
+          alert('Email sent successfully')
+        } else {
+          setResultError(mailData.error || 'Failed to send email.')
+        }
       } else {
         setResultError(data.error || 'Failed to fetch result.')
       }

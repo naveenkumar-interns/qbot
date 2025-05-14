@@ -8,5 +8,6 @@ urlpatterns = [
     path('submit_answers/', views.submit_answers, name='submit_answers'),
     path('evaluate_answers/', views.evaluate_answers, name='evaluate_answers'),
     path('get_evaluations/', views.get_evaluations, name='get_evaluations'),
+    path('sendmail/', views.sendmail, name='sendmail'),
 
 ]

@@ -10,6 +10,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from pymongo import MongoClient
 
+
+from django.core.mail import send_mail
+from django.conf import settings
+
 # MongoDB connection
 client = MongoClient("mongodb+srv://rohit:Rohit2004@cluster45.61avwkq.mongodb.net/")
 db = client["test_agent"]
@@ -38,7 +42,7 @@ def health_check(request):
 
 
 
-def store_questions(questions,user):
+def store_questions(questions,user,mail):
     """
     Store the generated questions in the MongoDB collection.
     """
@@ -46,6 +50,7 @@ def store_questions(questions,user):
         # Insert the questions into the MongoDB collection
         data = {
             "user": user,
+            "mail": mail,
             "questions": questions
         }
         # Check if the user already exists
@@ -67,6 +72,9 @@ def store_questions(questions,user):
 def Generate_questions(request):
     topic = request.data.get('topic')
     user = request.data.get('user')
+    mail = request.data.get('mail')
+    if not mail:
+        return JsonResponse({"error": "Mail is required"}, status=status.HTTP_400_BAD_REQUEST)
     if not user:
         return JsonResponse({"error": "User is required"}, status=status.HTTP_400_BAD_REQUEST)
     
@@ -96,7 +104,7 @@ def Generate_questions(request):
     if not isinstance(result, list):
         return JsonResponse({"error": "Invalid response format, try again"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    if not store_questions(result, user) :
+    if not store_questions(result, user , mail): 
         return JsonResponse({"error": "Failed to store questions"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return JsonResponse({"questions": result}, status=status.HTTP_200_OK)
 
@@ -298,7 +306,8 @@ def evaluate_answers(request):
     except Exception as e:
         print(f"Unexpected error in evaluate_answers: {str(e)}")
         return JsonResponse({"error": f"Failed to evaluate answers: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+
+
 @api_view(['POST'])
 def get_evaluations(request):
     user = request.data.get('user')
@@ -316,3 +325,162 @@ def get_evaluations(request):
     except Exception as e:
         print(f"Unexpected error in get_evaluations: {str(e)}")
         return JsonResponse({"error": f"Failed to get evaluations: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+
+
+
+# def extract_json(text):
+#     """
+#     Extract and parse JSON from AI response text.
+#     Handles text wrapped in ```json ... ``` or plain JSON.
+#     """
+#     try:
+#         text = text.strip()
+#         text = re.sub(r'^```json\s*', '', text, flags=re.MULTILINE)
+#         text = re.sub(r'\s*```$', '', text, flags=re.MULTILINE)
+#         return json.loads(text)
+#     except json.JSONDecodeError as e:
+#         raise ValueError(f"Failed to parse JSON: {str(e)}")
+#     except Exception as e:
+#         raise ValueError(f"Unexpected error: {str(e)}")
+
+def auto_evaluate(user):
+    try:
+        # Fetch the test data
+        user_data = questions_collection.find_one({"user": user})
+        if not user_data or "test" not in user_data:
+            raise ValueError("No test data found for this user")
+        test = user_data["test"]
+
+        # Use AI to evaluate each answer and provide feedback
+        results = []
+        updated_test = []
+        for q in test:
+            prompt = f"""
+            You are an examiner. Compare the following correct answer and user answer for the question below.
+            - Give a score of 1 if the user's answer is correct or mostly correct, otherwise 0.
+            - Briefly explain why you gave this score.
+            - Suggest how the user could improve their answer if it was not perfect.
+
+            Return your response as a JSON object with keys: score, reason, suggestion.
+            Example:
+            {{"score": 1, "reason": "The answer is correct.", "suggestion": ""}}
+            or
+            {{"score": 0, "reason": "The answer misses key points.", "suggestion": "Include more details about ..."}}
+
+            Question: {q['question']}
+            Correct Answer: {q['answer']}
+            User Answer: {q['user_answer']}
+            """
+            try:
+                ai_response = llm.invoke(prompt).content.strip()
+                feedback = extract_json(ai_response)
+                
+                if not isinstance(feedback, dict) or "score" not in feedback or "reason" not in feedback or "suggestion" not in feedback:
+                    raise ValueError("AI response JSON missing required keys: score, reason, suggestion")
+                
+                score = int(feedback.get("score", 0))
+                reason = feedback.get("reason", "No reason provided.")
+                suggestion = feedback.get("suggestion", "No suggestion provided.")
+            except Exception as e:
+                score = 0
+                reason = f"Failed to process AI response: {str(e)}"
+                suggestion = "Please try again or contact support."
+                feedback = {"score": score, "reason": reason, "suggestion": suggestion}
+
+            results.append(score)
+            updated_q = dict(q)
+            updated_q.update({
+                "score": score,
+                "reason": reason,
+                "suggestion": suggestion
+            })
+            updated_test.append(updated_q)
+
+        total_count = len(test)
+        correct_count = sum(results)
+        overall_score = (correct_count / total_count) * 100 if total_count > 0 else 0
+
+        # Store the updated test with feedback in the DB
+        questions_collection.update_one(
+            {"user": user},
+            {"$set": {"test": updated_test}},
+            upsert=True
+        )
+
+        return {
+            "user": user,
+            "score": overall_score,
+            "details": updated_test
+        }
+    except Exception as e:
+        return None
+
+@api_view(['GET'])
+def sendmail(request):
+    user = request.GET.get('user')
+    if not user:
+        return JsonResponse({"error": "User is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Fetch the user data
+        user_data = questions_collection.find_one({"user": user})
+        if not user_data or "mail" not in user_data:
+            return JsonResponse({"error": "No email data found for this user"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        email = user_data["mail"]
+        
+        # Auto-evaluate the user's answers
+        data = auto_evaluate(user)
+        
+        # Handle case where data is a JSON string (from older auto_evaluate)
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+
+            except json.JSONDecodeError as e:
+
+                return JsonResponse({"error": "Invalid evaluation data format"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Validate data
+        if not data or not isinstance(data, dict) or "score" not in data or "details" not in data:
+
+            return JsonResponse({"error": "Failed to auto-evaluate or invalid evaluation data"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Prepare email content
+        subject = "Your Quiz Evaluation Results"
+        overall_score = data["score"]
+        details = data["details"]
+        
+        # Create a formatted email body
+        body = f"Dear {user},\n\n"
+        body += f"Your quiz results have been evaluated. Your overall score is {overall_score:.2f}%.\n\n"
+        body += "Detailed Feedback:\n"
+        for idx, item in enumerate(details, 1):
+            body += f"\nQuestion {idx}: {item['question']}\n"
+            body += f"Your Answer: {item['user_answer']}\n"
+            body += f"Correct Answer: {item['answer']}\n"
+            body += f"Score: {item['score']}\n"
+            body += f"Reason: {item['reason']}\n"
+            body += f"Suggestion: {item['suggestion']}\n"
+        body += "\nThank you for participating!\nBest regards,\nQuiz Team"
+        
+        # Send email using Django's send_mail
+        try:
+            send_mail(
+                subject=subject,
+                message=body,
+                from_email=settings.EMAIL_SENDER,
+                recipient_list=[email],
+                fail_silently=False,
+            )
+     
+        except Exception as e:
+
+            return JsonResponse({"error": f"Failed to send email: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return JsonResponse({"message": "Mail sent successfully"}, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+
+        return JsonResponse({"error": f"Failed to process request: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
