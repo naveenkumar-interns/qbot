@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import Cookies from 'js-cookie'
 import './Topic.css'
 
 function Topic() {
   const [topic, setTopic] = useState('')
+  const [user, setUser] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const navigate = useNavigate()
@@ -13,15 +15,17 @@ function Topic() {
     setLoading(true)
     setError(null)
     try {
+      // Store username in cookies
+      Cookies.set('username', user, { expires: 7 }) // expires in 7 days
+
       const res = await fetch('http://localhost:8000/api/generate_questions/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ topic }),
+        body: JSON.stringify({ topic, user }),
       })
       if (res.ok) {
-        // Navigate to the next page (change '/questions' to your route)
         navigate('/questions')
       } else {
         setError('Failed to generate questions')
@@ -35,6 +39,13 @@ function Topic() {
   return (
     <div className="App">
       <form onSubmit={handleSubmit}>
+        <input
+          type="text"
+          value={user}
+          onChange={(e) => setUser(e.target.value)}
+          placeholder="Enter your username"
+          required
+        />
         <input
           type="text"
           value={topic}
